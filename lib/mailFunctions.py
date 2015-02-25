@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import sys
+from _ssl import SSLError
 import os
 import imaplib
 import email
@@ -112,6 +112,12 @@ def fetchNewMail(settings):
         mail.close()
         mail.logout()
         return -1
+    except SSLError:
+        print "{0} - SSL error ({1}): {2}".format(datetime.now().strftime('%d-%m-%Y %H:%M:%S'), SSLError.errno, SSLError.strerror)
+        mail.close()
+        mail.logout()
+        return -1
+
 
     return 0
 

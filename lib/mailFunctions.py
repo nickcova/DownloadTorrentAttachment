@@ -4,6 +4,8 @@ import os
 import imaplib
 import email
 import re
+import socket
+
 from datetime import datetime
 
 
@@ -117,7 +119,9 @@ def fetchNewMail(settings):
         mail.close()
         mail.logout()
         return -1
-
+    except socket.error:
+        print "{0} - Socket error ({1}): {2}".format(datetime.now().strftime('%d-%m-%Y %H:%M:%S'), socket.errno, socket.strerror)
+        return -3
 
     return 0
 

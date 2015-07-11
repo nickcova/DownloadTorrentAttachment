@@ -3,14 +3,14 @@
 
 import sys
 import getopt
-import lib.mailFunctions as MF
+from lib.mailFunctions import fetchnewmail
 import lib.programSettings
-from datetime import datetime
+import datetime
 
 def main(argv=None):
 
     # Default configuration file path/filename
-    configPath = "settings.cfg"
+    configpath = "settings.cfg"
 
     # If no arguments are passed on to the function, use the command
     # line arguments
@@ -20,24 +20,24 @@ def main(argv=None):
     # Get and check the command line arguments. Print usage if wrong
     # parameters are passed to the script.
     try:
-        opts, args = getopt.getopt(argv[1:],"c:",["config="])
+        opts, args = getopt.getopt(argv[1:], "c:", ["config="])
     except getopt.GetoptError:
         print 'Error!!! Script usage is: "getMyTorrent.py [-c <configFile>]"'
         return -1
 
     for opt, arg in opts:
         if opt in ("-c", "--config"):
-            configPath = arg
+            configpath = arg
     
-    print datetime.now().strftime('%d-%m-%Y %H:%M:%S') + " GetMyTorrent V1.0 Starting..."
+    print datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S') + " GetMyTorrent V1.0 Starting..."
     # Create a 'settings' object.
-    settings = lib.programSettings.ProgramSettings(configPath)
-    result = MF.fetchNewMail(settings)
+    settings = lib.programSettings.ProgramSettings(configpath)
+    result = fetchnewmail(settings)
 
     if result == 0:
         return 0
 
-    return -1
+    return result
 
 if __name__ == '__main__':
     sys.exit(main())

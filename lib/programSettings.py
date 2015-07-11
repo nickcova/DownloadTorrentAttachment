@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as et
 
 class ProgramSettings(object):
     """
@@ -20,7 +20,7 @@ class ProgramSettings(object):
             self._downloadPath = None
         else:
             # Read the configuration file
-            tree = ET.parse(fileName)
+            tree = et.parse(fileName)
             root = tree.getroot()
             # Set the object`s properties
             self._imapServer = root.find("imapServer").text
@@ -66,4 +66,3 @@ class ProgramSettings(object):
     def downloadPath(self):
         """ The system path where attached files from e-mails will be downloaded """
         return self._downloadPath
-        

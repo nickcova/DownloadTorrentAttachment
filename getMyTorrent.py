@@ -4,7 +4,7 @@
 import sys
 import getopt
 from lib.mailFunctions import fetchnewmail
-import lib.programSettings
+from lib.programSettings import ProgramSettings
 import datetime
 
 def main(argv=None):
@@ -29,9 +29,9 @@ def main(argv=None):
         if opt in ("-c", "--config"):
             configpath = arg
     
-    print datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S') + " GetMyTorrent V1.0 Starting..."
+    print datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S') + " GetMyTorrent V1.1 Starting..."
     # Create a 'settings' object.
-    settings = lib.programSettings.ProgramSettings(configpath)
+    settings = ProgramSettings(configpath)
     result = fetchnewmail(settings)
 
     if result == 0:

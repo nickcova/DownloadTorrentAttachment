@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import print_function
 from _ssl import SSLError
 import os
 import imaplib
@@ -7,12 +8,24 @@ import re
 import datetime
 import smtplib
 
+from apiclient import errors
+import base64
+import pickle
+import os.path
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+
+# If modifying these scopes, delete the file token.pickle.
+SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
+
 
 def istorrentfile(filename):
     """
     Checks if a file has a '.torrent' extension. A regular
     expression is used to validate
     """
+    #TODO Is this still necessary?
     expression = re.compile(r".+\.torrent")
     if expression.match(filename) is not None:
         return True
@@ -27,100 +40,59 @@ def fetchnewmail(settings):
     specified directory.
     """
 
-    try:
-        mail = imaplib.IMAP4_SSL(settings.imapServer)
-        print datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S') + " Connecting to " + settings.imapServer + "..."
-        mail.login(settings.login, settings.password)
-        mail.select("inbox")  # connect to "inbox" folder.
-        result, data = mail.uid('search', None, "UNSEEN")  # search and return
-
-        if len(data) > 0 and data[0] != '':
-            print datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S') + " There are " + str(len(data[0].split())) + " new messages."
-            #print data[0].split()
-
-            latest_email_uid = data[0].split()[-1]  # get the most recent e-mail id
-            print datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S') + " Downloading most recent e-mail..."
-            result, data = mail.uid('fetch', latest_email_uid, '(RFC822)')  # download the mos recent e-mail
-
-            raw_email = data[0][1]
-            email_message = email.message_from_string(raw_email)
-            #print email_message['To']
-            #print email_message['From']
-            #print email_message['Subject']
-
-            fromAddress = email_message['From']
-            fromAddress = fromAddress[fromAddress.find('<')+1:fromAddress.find('>')]
-
-            if fromAddress == 'some.address@email.com':
-                # check if the e-mail has an attachment
-                attachmentExists = False
-                for part in email_message.walk():
-                    if part.get_content_maintype() == 'multipart':
-                        continue
-                    if part.get('Content-Disposition') is None:
-                        continue
-                    attachmentExists = True
-                    filename = part.get_filename()
-                    if istorrentfile(filename):
-                        print datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S') + " The attached file is: " + filename
-                        downloadLocation = settings.downloadPath
-
-                        if not os.path.isfile(downloadLocation):
-                            fileData = part.get_payload(decode=True)
-                            if not fileData:
-                                continue
-                            fp = open(downloadLocation+filename, 'w')
-                            fp.write(fileData)
-                            fp.close()
-                            sendsmtpmail(settings, 0, filename)
-                    else:
-                        print datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S') + " Warning! : The attached file is not a torrent file."
-                        sendsmtpmail(settings, 1, "The attached file is not a torrent file ("+filename+").")
-                        continue
-
-                if not attachmentExists:
-                    print datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S') + " Warning! : the e-mail message does not have an attachment."
-                    sendsmtpmail(settings, 1, "The e-mail message does not have an attachment.")
-
-                # delete the email when finished working with it
-                print datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S') + " Deleting message..."
-                mail.uid("STORE", latest_email_uid, '+FLAGS', '(\Deleted)')
-                mail.expunge()
-
-            else:
-                sendsmtpmail(settings, 1, "Received an e-mail from "+ fromAddress +".")
-
-                print datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S') + " Marking e-mail message as 'read'..."
-                mail.uid("STORE", latest_email_uid, '+FLAGS', '(\Seen)')
-                mail.expunge()
-
+    creds = None
+    # The file token.pickle stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists('credentials/token.pickle'):
+        with open('credentials/token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
         else:
-            print "{0} - No new messages. Exiting program.".format(datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S'))
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials/credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open('credentials/token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
 
-        mail.close()
-        mail.logout()
-        print datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S') + " Connection to " + settings.imapServer + " closed. Bye."
+    service = build('gmail', 'v1', credentials=creds)
 
-    # Catch server errors...
-    except imaplib.IMAP4.abort as imaplibAbort:
-        print "{0} - IMAP4 abort caught: ".format(datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')), imaplibAbort.strerror
-        mail.close()
-        mail.logout()
-        return -1
-    # Catch other types of errors...
-    except imaplib.IMAP4.error as imaplibError:
-        print "{0} - IMAP4 error caught : ".format(datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')), imaplibError.strerror
-        mail.close()
-        mail.logout()
-        return -1
-    except SSLError as sslerr:
-        print "{0} - SSLError caught : ".format(datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')), sslerr.strerror
-        mail.close()
-        mail.logout()
-        return sslerr.errno
-    except IOError as ioerr:
-        print "{0} - IOError caught : ".format(datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')), ioerr.strerror
-        return ioerr.errno
+    # Call the Gmail API
+    unread_msgs = service.users().messages().list(userId='me', labelIds='INBOX', q='is:unread').execute()
+
+    if not unread_msgs.get('messages'):
+        print('No unread messages found')
+    else:
+        msg = unread_msgs.get('messages')[0]
+        msg_id = msg.get('id')
+        msg_details = service.users().messages().get(userId='me', id=msg_id, format='full').execute()
+
+        for part in msg_details['payload']['parts']:
+            if "application/x-bittorrent" == part['mimeType']:
+                print("Found a .torrent file!") 
+
+                try:                    
+                    attachment = service.users().messages().attachments().get(userId='me', messageId=msg_id, id=part['body']['attachmentId']).execute()
+                    file_data = base64.urlsafe_b64decode(attachment['data'].encode('UTF-8'))
+
+                    store_dir = settings.downloadPath
+                    path = ''.join([store_dir, part['filename']])
+
+                    f = open(path, 'w')
+                    f.write(file_data)
+                    f.close()
+                except errors.HttpError, error:
+                    print ('An error occurred: %s' % error)
+            else:
+                print('Part has no attachment, skipping...')
+
+        # Mark message as READ
+        msg_labels = {'removeLabelIds': ['UNREAD'], 'addLabelIds': []}
+        service.users().messages().modify(userId='me', id=msg_id, body=msg_labels).execute()        
 
     return 0
 
@@ -131,7 +103,7 @@ def sendsmtpmail(settings, emailtype, text):
     Type 1 means 'Warning'
     Type -1 means 'Error'
     """
-    
+    #TODO Is this still necessary?
     # Create the root message and fill in the from, to, and subject headers
     msgroot = email.MIMEMultipart.MIMEMultipart('related')
     msgroot['Subject'] = 'Raspberry Pi Notification'

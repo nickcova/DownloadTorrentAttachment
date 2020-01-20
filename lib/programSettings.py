@@ -11,41 +11,22 @@ class ProgramSettings(object):
         Class constructor
         """
         if fileName == '':
-            self._imapServer = None
-            self._smtpServer = None
-            self._smtpPort = None
             self._login = None
             self._password = None
             self._recipient = None
             self._downloadPath = None
+            self._okImagePath = None
         else:
             # Read the configuration file
             tree = et.parse(fileName)
             root = tree.getroot()
             # Set the object`s properties
-            self._imapServer = root.find("imapServer").text
-            self._smtpServer = root.find("smtpServer").text
-            self._smtpPort = root.find("smtpServerPort").text
             self._login = root.find("login").text
             self._password = root.find("password").text
             self._recipient = root.find("recipient").text
             self._downloadPath = root.find("downloadLocation").text
-    
-    @property
-    def imapServer(self):
-        """ The IMAP Server address to be used of e-mail reception. """
-        return self._imapServer
-    
-    @property
-    def smtpServer(self):
-        """ The SMTP Server address to be used to send e-mails """
-        return self._smtpServer
-    
-    @property
-    def smtpPort(self):
-        """ The port to use when connecting to the SMTP server """
-        return self._smtpPort
-    
+            self._okImagePath = root.find("okImageLocation").text
+       
     @property
     def login(self):
         """ The e-mail address to be used to sign in into the SMTP/IMAP servers """
@@ -66,3 +47,8 @@ class ProgramSettings(object):
     def downloadPath(self):
         """ The system path where attached files from e-mails will be downloaded """
         return self._downloadPath
+
+    @property
+    def okImagePath(self):
+        """ The system path of the attached image for notification emails """
+        return self._okImagePath

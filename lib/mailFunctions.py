@@ -15,22 +15,12 @@ import os.path
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
 
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
-
-
-def istorrentfile(filename):
-    """
-    Checks if a file has a '.torrent' extension. A regular
-    expression is used to validate
-    """
-    #TODO Is this still necessary?
-    expression = re.compile(r".+\.torrent")
-    if expression.match(filename) is not None:
-        return True
-    return False
-
 
 def fetchnewmail(settings):
     """
@@ -61,17 +51,21 @@ def fetchnewmail(settings):
 
     service = build('gmail', 'v1', credentials=creds)
 
-    # Call the Gmail API
+    # Call the Gmail API and bring unread emails in the Inbox
     unread_msgs = service.users().messages().list(userId='me', labelIds='INBOX', q='is:unread').execute()
 
     if not unread_msgs.get('messages'):
-        print('No unread messages found')
+        print('No unread messages found. Exiting.')
     else:
+        file_downloaded = False
+        attachment_filename = ""
+
         msg = unread_msgs.get('messages')[0]
         msg_id = msg.get('id')
         msg_details = service.users().messages().get(userId='me', id=msg_id, format='full').execute()
 
         for part in msg_details['payload']['parts']:
+            # If the attachment is a torrent file, download it
             if "application/x-bittorrent" == part['mimeType']:
                 print("Found a .torrent file!") 
 
@@ -81,10 +75,14 @@ def fetchnewmail(settings):
 
                     store_dir = settings.downloadPath
                     path = ''.join([store_dir, part['filename']])
+                    attachment_filename = part['filename']
 
                     f = open(path, 'w')
                     f.write(file_data)
                     f.close()
+
+                    file_downloaded = True
+
                 except errors.HttpError, error:
                     print ('An error occurred: %s' % error)
             else:
@@ -94,25 +92,65 @@ def fetchnewmail(settings):
         msg_labels = {'removeLabelIds': ['UNREAD'], 'addLabelIds': []}
         service.users().messages().modify(userId='me', id=msg_id, body=msg_labels).execute()        
 
+        if file_downloaded:
+            send_notification(service, settings, attachment_filename)
+
     return 0
 
 
-def create_message(sender, to, subject, message_text):
+def send_notification(service, settings, filename):
+    notification_message = create_notification_message(settings, filename)
+
+    if notification_message is not None:
+        sentMsg = send_message(service, "me", notification_message)
+        print(sentMsg)
+
+
+def create_notification_message(settings, filename):
     """Create a message for an email.
 
     Args:
     sender: Email address of the sender.
     to: Email address of the receiver.
-    subject: The subject of the email message.
-    message_text: The text of the email message.
+    filename: The name of the torrent file that was downloaded.
 
     Returns:
     An object containing a base64url encoded email object.
     """
-    message = MIMEText(message_text)
-    message["to"] = to
-    message["from"] = sender
-    message["subject"] = subject
+    
+    message = MIMEMultipart("related")
+    message["to"] = settings.recipient
+    message["from"] = settings.login
+    message["subject"] = "Torrent File Downloaded"
+    message.preamble = "This is a multi-part message in MIME format."
+
+    msgAlternative = MIMEMultipart('alternative')
+    message.attach(msgAlternative)
+
+    plain_text = "File '" + filename + "' downloaded."
+
+    html_file = open("html/email_notification.html","r")
+    html = html_file.read()
+    html = html.replace("___ATTACHMENT___", filename)
+
+    # Record the MIME types of both parts - text/plain and text/html.
+    part1 = MIMEText(plain_text, 'plain')
+    part2 = MIMEText(html, 'html')
+
+    # Attach parts into message container.
+    # According to RFC 2046, the last part of a multipart message, in this case
+    # the HTML message, is best and preferred.
+    msgAlternative.attach(part1)
+    msgAlternative.attach(part2)
+
+    fp = open(settings.okImagePath, 'rb')
+    msgimage = MIMEImage(fp.read())
+    fp.close()
+
+    # Define the image's ID as referenced above
+    msgimage.add_header('Content-ID', '<image1>')
+    message.attach(msgimage)
+
     return {"raw": base64.urlsafe_b64encode(message.as_string())}
 
 
@@ -134,81 +172,3 @@ def send_message(service, user_id, message):
         return message
     except errors.HttpError, error:
         print ("An error occurred: %s" % error)
-
-
-def sendsmtpmail(settings, emailtype, text):
-    """
-    Type 0 means 'OK'
-    Type 1 means 'Warning'
-    Type -1 means 'Error'
-    """
-    #TODO Is this still necessary?
-    # Create the root message and fill in the from, to, and subject headers
-    msgroot = email.MIMEMultipart.MIMEMultipart('related')
-    msgroot['Subject'] = 'Raspberry Pi Notification'
-    msgroot['From'] = settings.login
-    msgroot['To'] = settings.recipient
-    msgroot.preamble = 'This is a multi-part message in MIME format.'
-    
-    # Encapsulate the plain and HTML versions of the message body in an
-    # 'alternative' part, so message agents can decide which they want to display.
-    msgalternative = email.MIMEMultipart.MIMEMultipart('alternative')
-    msgroot.attach(msgalternative)
-    
-    # We reference the image in the IMG SRC attribute by the ID we give it below
-    #msgText = MIMEText('<b>Some <i>HTML</i> text</b> and an image.<br><img src="cid:image1"><br>Nifty!', 'html')
-    #msgalternative.attach(msgText)
-    
-    if emailtype == 0:
-        msgtext = email.MIMEText.MIMEText('Received attachment ('+text+") downloaded successfully at "+datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S'))
-        msgalternative.attach(msgtext)
-        
-        msgtext = email.MIMEText.MIMEText('<table width=600><tr><td align="center"><img src="cid:image1"/></td></tr><tr><td>Received attachment ('+text+") downloaded succesfully at "+datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')+"</td></tr></table>", "html")
-        msgalternative.attach(msgtext)
-        # This example assumes the image is in the current directory
-        fp = open('/home/pi/Pictures/Status/raspi_ok.jpg', 'rb')
-        msgimage = email.MIMEImage.MIMEImage(fp.read())
-        fp.close()
-
-        # Define the image's ID as referenced above
-        msgimage.add_header('Content-ID', '<image1>')
-        msgroot.attach(msgimage)
-        
-    elif emailtype == 1:
-        msgtext = email.MIMEText.MIMEText('Warning: '+text+" (at "+datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')+')')
-        msgalternative.attach(msgtext)
-        
-        msgtext = email.MIMEText.MIMEText('<table><tr><td align="center"><img src="cid:image1"/></td></tr><tr><td>Warning: '+text+" (at "+datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')+")</td></tr></table>", "html")
-        msgalternative.attach(msgtext)
-        # This example assumes the image is in the current directory
-        fp = open('/home/pi/Pictures/Status/raspi_warn.jpg', 'rb')
-        msgimage = email.MIMEImage.MIMEImage(fp.read())
-        fp.close()
-
-        # Define the image's ID as referenced above
-        msgimage.add_header('Content-ID', '<image1>')
-        msgroot.attach(msgimage)
-        
-    elif emailtype == -1:
-        msgtext = email.MIMEText.MIMEText('Error: '+text+" (at "+datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')+")")
-        msgalternative.attach(msgtext)
-        
-        msgtext = email.MIMEText.MIMEText('<table width=600><tr><td align="center"><img src="cid:image1"/></td></tr><tr><td>Error: '+text+" (at "+datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')+")</td></tr></table>", "html")
-        msgalternative.attach(msgtext)
-        # This example assumes the image is in the current directory
-        fp = open('/home/pi/Pictures/Status/raspi_error.jpg', 'rb')
-        msgimage = email.MIMEImage.MIMEImage(fp.read())
-        fp.close()
-
-        # Define the image's ID as referenced above
-        msgimage.add_header('Content-ID', '<image1>')
-        msgroot.attach(msgimage)
-
-    # Send the email (this example assumes SMTP authentication is required)
-    smtp = smtplib.SMTP(settings.smtpServer, settings.smtpPort)
-    smtp.ehlo()
-    smtp.starttls()
-    smtp.ehlo()
-    smtp.login(settings.login.split('@')[0], settings.password)
-    smtp.sendmail(settings.login, settings.recipient, msgroot.as_string())
-    smtp.quit()

@@ -15,6 +15,7 @@ import os.path
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+from google.oauth2 import service_account
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
@@ -30,26 +31,7 @@ def fetchnewmail(settings):
     specified directory.
     """
 
-    creds = None
-    # The file token.pickle stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists('credentials/token.pickle'):
-        with open('credentials/token.pickle', 'rb') as token:
-            creds = pickle.load(token)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials/credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open('credentials/token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
-
-    service = build('gmail', 'v1', credentials=creds)
+    service = create_service(SCOPES, settings)
 
     # Call the Gmail API and bring unread emails in the Inbox
     unread_msgs = service.users().messages().list(userId='me', labelIds='INBOX', q='is:unread').execute()
@@ -172,3 +154,28 @@ def send_message(service, user_id, message):
         return message
     except errors.HttpError, error:
         print ("An error occurred: %s" % error)
+
+
+def create_service(SCOPES, settings):
+    creds = None
+    # The file token.pickle stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists(settings.tokenPicklePath):
+        with open(settings.tokenPicklePath, 'rb') as token:
+            creds = pickle.load(token)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                settings.credentialsPath, SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open(settings.tokenPicklePath, 'wb') as token:
+            pickle.dump(creds, token)
+
+    service = build('gmail', 'v1', credentials=creds)
+
+    return service

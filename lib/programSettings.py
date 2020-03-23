@@ -14,6 +14,8 @@ class ProgramSettings(object):
             self._login = None
             self._password = None
             self._recipient = None
+            self._tokenPicklePath = None
+            self._credentialsPath = None
             self._downloadPath = None
             self._okImagePath = None
         else:
@@ -21,9 +23,13 @@ class ProgramSettings(object):
             tree = et.parse(fileName)
             root = tree.getroot()
             # Set the object`s properties
-            self._login = root.find("login").text
-            self._password = root.find("password").text
+            #self._login = root.find("login").text
+            #self._password = root.find("password").text
+            self._login = None
+            self._password = None
             self._recipient = root.find("recipient").text
+            self._tokenPicklePath = root.find("tokenPicklePath").text
+            self._credentialsPath = root.find("credentialsPath").text
             self._downloadPath = root.find("downloadLocation").text
             self._okImagePath = root.find("okImageLocation").text
        
@@ -42,6 +48,16 @@ class ProgramSettings(object):
         """ The e-mail address that will be used to filter received messages. This same address
         will be used in the 'To:' field of sent e-mails """
         return self._recipient
+
+    @property
+    def tokenPicklePath(self):
+        """ The path to the token.pickle file """
+        return self._tokenPicklePath
+
+    @property
+    def credentialsPath(self):
+        """ The path to the credentials file """
+        return self._credentialsPath
     
     @property
     def downloadPath(self):
